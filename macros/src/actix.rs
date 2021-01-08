@@ -854,6 +854,10 @@ fn handle_field_struct(
     props_gen: &mut proc_macro2::TokenStream,
 ) {
     for field in &fields.named {
+        if SerdeSkip::exists(&field.attrs) {
+            continue;
+        }
+
         let mut field_name = field
             .ident
             .as_ref()
@@ -903,6 +907,10 @@ fn handle_enum(e: &DataEnum, serde: &SerdeProps, props_gen: &mut proc_macro2::To
     ));
 
     for var in &e.variants {
+        if SerdeSkip::exists(&var.attrs) {
+            continue;
+        }
+
         let mut name = var.ident.to_string();
         match &var.fields {
             Fields::Unit => (),
@@ -1033,6 +1041,39 @@ impl SerdeRename {
             SerdeRename::Kebab => name.to_kebab_case(),
             SerdeRename::ScreamingKebab => name.to_kebab_case().to_uppercase(),
         }
+    }
+}
+
+struct SerdeSkip;
+
+impl SerdeSkip {
+    /// Traverses the field attributes and returns true, if
+    /// `#[serde(skip)]` was found.
+    fn exists(field_attrs: &[Attribute]) -> bool {
+        for meta in field_attrs.iter().filter_map(|a| a.parse_meta().ok()) {
+            let inner_meta = match meta {
+                Meta::List(ref l)
+                    if l.path
+                        .segments
+                        .last()
+                        .map(|p| p.ident == "serde")
+                        .unwrap_or(false) =>
+                {
+                    &l.nested
+                }
+                _ => continue,
+            };
+
+            for meta in inner_meta {
+                if let NestedMeta::Meta(Meta::Path(syn::Path { segments, .. })) = meta {
+                    if segments.iter().any(|p| p.ident == "skip") {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 }
 

@@ -1,5 +1,7 @@
 //! Traits used for code and spec generation.
 
+use protobuf::{MessageField, ProtobufEnum, ProtobufEnumOrUnknown};
+
 use super::models::{
     DataType, DataTypeFormat, DefaultOperationRaw, DefaultSchemaRaw, Either, Resolvable,
     SecurityScheme,
@@ -483,3 +485,46 @@ pub trait Apiv2Errors {
 impl Apiv2Errors for () {}
 #[cfg(feature = "actix-base")]
 impl Apiv2Errors for actix_web::Error {}
+
+impl<E: ProtobufEnum> Apiv2Schema for ProtobufEnumOrUnknown<E> {
+    const NAME: Option<&'static str> = Some("Asd");
+    const DESCRIPTION: &'static str = "";
+    const REQUIRED: bool = false;
+
+    fn raw_schema() -> DefaultSchemaRaw {
+        let descriptor = E::enum_descriptor_static();
+        let name = descriptor.get_name();
+        let mut schema = DefaultSchemaRaw {
+            name: Some(name.into()),
+            ..Default::default()
+        };
+        schema.data_type = Some(DataType::String);
+        for value in descriptor.values() {
+            schema.enum_.push(serde_json::json!(value.get_name()));
+        }
+        schema
+    }
+}
+
+impl<T: Apiv2Schema> Apiv2Schema for MessageField<T> {
+    const NAME: Option<&'static str> = T::NAME;
+    const REQUIRED: bool = false;
+
+    fn raw_schema() -> DefaultSchemaRaw {
+        T::raw_schema()
+    }
+
+    fn security_scheme() -> Option<SecurityScheme> {
+        T::security_scheme()
+    }
+}
+
+impl Apiv2Schema for bytes::Bytes {
+    fn raw_schema() -> DefaultSchemaRaw {
+        DefaultSchemaRaw {
+            data_type: Some(DataType::Array),
+            items: Some(u8::schema_with_ref().into()),
+            ..Default::default()
+        }
+    }
+}
